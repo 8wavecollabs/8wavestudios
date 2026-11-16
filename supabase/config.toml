@@ -1,0 +1,4 @@
+# Stripe calls this function directly and can't send a Supabase login.
+# The function checks Stripe's signature itself instead.
+[functions.stripe-webhook]
+verify_jwt = false

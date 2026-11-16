@@ -16,7 +16,7 @@ Recovered on 2026-11-16.
 - `crate.html`, the vinyl records page. It was never published to the live site (404),
   so it only exists in the Oct 26 desktop-app scratch folder on the Windows computer.
 
-## Known issue
+## Stripe webhook
 
-`stripe-webhook` is deployed with "Verify JWT" ON. Stripe can't send a Supabase login,
-so its payment events are rejected. Redeploy it with Verify JWT OFF.
+`stripe-webhook` must run with "Verify JWT" OFF (see `supabase/config.toml`), because
+Stripe can't send a Supabase login. Fixed on 2026-11-16 (version 2).
