@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Back Office</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body style="padding-bottom:40px">
+<nav class="top">
+  <div class="wrap">
+    <a class='logo' href='/'>BACK<span>OFFICE</span></a>
+    <span class="grow"></span>
+    <a class='btn ghost sm' href='/' target='_blank'>View store ↗</a>
+    <button class="btn ghost sm hidden" id="signOut">Sign out</button>
+  </div>
+</nav>
+
+<div class="wrap hidden" id="login" style="max-width:420px;padding-top:60px">
+  <form class="card" id="loginForm">
+    <h2 style="margin-top:0">Producer login</h2>
+    <label>Email<br><input class="input" type="email" name="email" required autocomplete="username" style="width:100%"></label>
+    <label style="display:block;margin-top:10px">Password<br><input class="input" type="password" name="password" required autocomplete="current-password" style="width:100%"></label>
+    <p class="down" id="loginErr" style="min-height:1.5em;font-size:13px"></p>
+    <button class="btn primary" style="width:100%">Sign in</button>
+  </form>
+</div>
+
+<main class="wrap hidden" id="app" style="padding-top:20px">
+  <div class="tabs" id="tabs">
+    <button data-tab="dash" class="on">📊 Dashboard</button>
+    <button data-tab="upload">⬆ Upload</button>
+    <button data-tab="tracks">🎵 Tracks</button>
+    <button data-tab="subs">🔔 Subscribers</button>
+    <button data-tab="orders">💳 Orders</button>
+    <button data-tab="settings">⚙ Settings</button>
+  </div>
+
+  <!-- Dashboard -->
+  <div data-pane="dash">
+    <div class="grid4" id="kpis"></div>
+    <div class="grid2" style="margin-top:20px">
+      <div class="card"><h3 style="margin-top:0">💡 What to upload more of</h3><div id="suggest"></div></div>
+      <div class="card"><h3 style="margin-top:0">Plays by tempo (last 7 days)</h3><div class="bars" id="bandBars"></div>
+        <h3>Plays by mood</h3><div class="bars" id="moodBars"></div></div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <h3 style="margin-top:0">🔥 Trending tracks</h3>
+      <table><thead><tr><th>Track</th><th>BPM / Key</th><th>14-day plays</th><th>7d plays</th><th>vs prior 7d</th><th>Cart adds</th><th>Sales</th><th>Total plays</th></tr></thead><tbody id="trend"></tbody></table>
+    </div>
+  </div>
+
+  <!-- Upload -->
+  <div data-pane="upload" class="hidden">
+    <div class="card" id="catCard" style="margin-bottom:20px">
+      <div class="row"><div class="grow"><h3 style="margin:0">💽 Hard drive catalog</h3>
+        <span class="muted" id="catInfo">Looking for catalog.json…</span></div>
+        <button class="btn primary" id="catImport" disabled>Import to store</button></div>
+      <div class="row" id="catBands" style="margin-top:12px"></div>
+    </div>
+    <div class="dropzone" id="drop">
+      <h3>Drag &amp; drop tracks or whole folders here</h3>
+      <p class="muted">MP3, WAV, AIFF, FLAC, M4A. Every file is analysed for BPM, key and mood, then sorted into tempo categories.<br>Tip: name files like <code>Imperator 144bpm F#min.wav</code> and we'll use that as a hint.</p>
+      <div class="row" style="justify-content:center">
+        <label class="btn primary">Choose files<input type="file" id="pickFiles" accept="audio/*" multiple hidden></label>
+        <label class="btn ghost">Choose folder / hard drive<input type="file" id="pickDir" webkitdirectory multiple hidden></label>
+      </div>
+    </div>
+    <div class="card hidden" id="queueCard" style="margin-top:20px">
+      <div class="row"><h3 class="grow" style="margin:0">Upload queue <span class="muted" id="qStatus"></span></h3>
+        <button class="btn ghost sm" id="qCsv">Export BPM report (CSV)</button>
+        <button class="btn ghost sm" id="qClear">Clear</button>
+        <button class="btn primary" id="qPublish">Publish all</button></div>
+      <div class="row" id="qBands" style="margin:14px 0"></div>
+      <div class="queue-item muted" style="font-size:12px"><span>TITLE / TAGS</span><span>BPM</span><span>KEY</span><span>CATEGORY</span><span>STATUS</span></div>
+      <div id="queue"></div>
+    </div>
+  </div>
+
+  <!-- Tracks -->
+  <div data-pane="tracks" class="hidden">
+    <div class="card"><table><thead><tr><th>Track</th><th>BPM</th><th>Key</th><th>Category</th><th>Mood</th><th>Plays</th><th>Sales</th><th>Visible</th><th></th></tr></thead><tbody id="trackRows"></tbody></table></div>
+  </div>
+
+  <!-- Subscribers -->
+  <div data-pane="subs" class="hidden">
+    <div class="card">
+      <div class="row"><h3 class="grow" style="margin:0">Email list <span class="muted" id="subCount"></span></h3>
+        <button class="btn ghost sm" id="subCsv">Export CSV</button><button class="btn purple sm" id="notify">✉ Announce new beats</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Email</th><th>Name</th><th>Wants</th><th>Source</th><th>Joined</th></tr></thead><tbody id="subRows"></tbody></table>
+    </div>
+  </div>
+
+  <!-- Orders -->
+  <div data-pane="orders" class="hidden">
+    <div class="card"><table><thead><tr><th>Date</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody id="orderRows"></tbody></table></div>
+  </div>
+
+  <!-- Settings -->
+  <div data-pane="settings" class="hidden">
+    <form class="card" id="setForm">
+      <div class="grid2">
+        <label>Producer / brand name<br><input class="input" name="producer" style="width:100%"></label>
+        <label>Tagline<br><input class="input" name="tagline" style="width:100%"></label>
+      </div>
+      <h3>Licenses &amp; Stripe Payment Links</h3>
+      <p class="muted" style="font-size:13px">Create a Payment Link per license in your Stripe dashboard and paste it here. Without a link, checkout runs in demo mode (no charge).</p>
+      <div id="licEdit"></div>
+      <h3>Email list sync (optional)</h3>
+      <label>Form endpoint (Mailchimp / ConvertKit / Formspree POST URL)<br><input class="input" name="newsletterEndpoint" style="width:100%" placeholder="https://…"></label>
+      <div class="row" style="margin-top:18px"><button class="btn primary">Save settings</button><span class="grow"></span>
+        <button type="button" class="btn ghost sm" id="resetDemo">Remove demo tracks</button></div>
+    </form>
+  </div>
+</main>
+
+<div id="layer"></div>
+
+<script src="js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script src="js/db.js"></script>
+<script src="js/db-cloud.js"></script>
+<script src="js/preview.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/analyze.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const DAY = 86400000;
+let S = { tracks: [], events: [], subs: [], orders: [], settings: null };
+
+document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('[data-pane]').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== b.dataset.tab));
+});
+
+// Online mode: only the producer (listed in the admins table) gets past the login screen
+async function gate() {
+  const s = await DB.session();
+  const ok = s && (s.local || s.isAdmin);
+  $('#login').classList.toggle('hidden', !!ok);
+  $('#app').classList.toggle('hidden', !ok);
+  $('#signOut').classList.toggle('hidden', !s || s.local);
+  if (s && !ok) $('#loginErr').textContent = `${s.email} isn't on the admins list — add it in supabase/schema.sql.`;
+  if (ok) refresh();
+}
+$('#loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  $('#loginErr').textContent = '';
+  try { await DB.signIn(e.target.email.value.trim(), e.target.password.value); e.target.reset(); gate(); }
+  catch (err) { $('#loginErr').textContent = err.message; }
+};
+$('#signOut').onclick = async () => { await DB.signOut(); gate(); };
+
+async function refresh() {
+  await DB.seedIfEmpty();
+  [S.tracks, S.events, S.subs, S.orders, S.settings] = await Promise.all([DB.all('tracks'), DB.all('events'), DB.all('subscribers'), DB.all('orders'), DB.settings()]);
+  renderDash(); renderTracks(); renderSubs(); renderOrders(); renderSettings(); loadCatalog();
+}
+
+/* ---------- Analytics ---------- */
+function stats() {
+  const now = Date.now(), per = {};
+  for (const t of S.tracks) per[t.id] = { t, total: 0, w: 0, pw: 0, carts: 0, sales: 0, rev: 0, days: new Array(14).fill(0) };
+  for (const e of S.events) {
+    const p = per[e.trackId]; if (!p) continue;
+    const age = (now - e.ts) / DAY;
+    if (e.type === 'play') {
+      p.total++;
+      if (age < 7) p.w++; else if (age < 14) p.pw++;
+      if (age < 14) p.days[13 - Math.floor(age)]++;
+    }
+    if (e.type === 'cart') p.carts++;
+    if (e.type === 'purchase') { p.sales++; p.rev += e.price || 0; }
+  }
+  return Object.values(per);
+}
+
+function segment(rows, keyFn, labelFn = (k) => k) {
+  const seg = {};
+  for (const r of rows) for (const k of [].concat(keyFn(r.t))) {
+    const s = (seg[k] ||= { key: k, label: labelFn(k), n: 0, w: 0, carts: 0, sales: 0 });
+    s.n++; s.w += r.w; s.carts += r.carts; s.sales += r.sales;
+  }
+  return Object.values(seg);
+}
+
+function renderDash() {
+  const rows = stats();
+  const sum = (f) => rows.reduce((a, r) => a + f(r), 0);
+  const w = sum((r) => r.w), pw = sum((r) => r.pw), total = sum((r) => r.total), carts = sum((r) => r.carts);
+  const rev = S.orders.filter((o) => o.status !== 'pending').reduce((a, o) => a + o.total, 0);
+  const newSubs = S.subs.filter((s) => s.ts > Date.now() - 7 * DAY).length;
+  const delta = (a, b) => (b ? Math.round(((a - b) / b) * 100) : 0);
+  const d = delta(w, pw);
+  $('#kpis').innerHTML = [
+    ['Total plays', UI.compact(total), `${S.tracks.length} tracks live`],
+    ['Plays · last 7 days', UI.compact(w), `<span class="delta ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '▲' : '▼'} ${Math.abs(d)}% vs prior week</span>`],
+    ['Revenue', UI.money(rev), `${S.orders.length} orders · ${carts} cart adds`],
+    ['Email subscribers', S.subs.length, `+${newSubs} this week`],
+  ].map(([l, v, s]) => `<div class="card kpi"><small>${l}</small><b>${v}</b><small>${s}</small></div>`).join('');
+
+  // Trending table
+  const trend = [...rows].sort((a, b) => b.w - a.w || b.total - a.total);
+  const max = Math.max(1, ...rows.flatMap((r) => r.days));
+  $('#trend').innerHTML = trend.map((r) => {
+    const ch = r.pw ? Math.round(((r.w - r.pw) / r.pw) * 100) : (r.w ? 100 : 0);
+    const hot = r.w >= 3 && ch >= 30;
+    return `<tr><td><b>${UI.esc(r.t.title)}</b> ${hot ? '<span class="chip hot">🔥 trending</span>' : ''}</td><td class="muted">${r.t.bpm} · ${UI.esc(r.t.key)}</td>
+      <td><div class="spark">${r.days.map((v) => `<i style="height:${Math.max(2, (v / max) * 26)}px"></i>`).join('')}</div></td>
+      <td><b>${r.w}</b></td><td class="${ch >= 0 ? 'up' : 'down'}">${ch >= 0 ? '▲' : '▼'} ${Math.abs(ch)}%</td><td>${r.carts}</td><td>${r.sales}</td><td>${r.total}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="muted">Upload tracks to start tracking plays.</td></tr>';
+
+  // Bars
+  const bars = (el, segs) => {
+    const m = Math.max(1, ...segs.map((s) => s.w));
+    $(el).innerHTML = segs.sort((a, b) => b.w - a.w).map((s) => `<div class="bar-row"><span>${UI.esc(s.label)} <span class="muted">(${s.n})</span></span><div class="meter"><i style="width:${(s.w / m) * 100}%"></i></div><b>${s.w}</b></div>`).join('');
+  };
+  const bandLabel = (id) => DB.BANDS.find((b) => b.id === id)?.label || id;
+  const bands = segment(rows, (t) => t.band, bandLabel);
+  bars('#bandBars', bands);
+  const moods = segment(rows, (t) => t.mood || 'unknown');
+  bars('#moodBars', moods);
+
+  // Suggestions: segments whose share of plays outruns their share of the catalog
+  const tips = [];
+  const consider = (segs, kind, fmt) => {
+    for (const s of segs) {
+      if (!w) continue;
+      const demand = s.w / w, supply = s.n / S.tracks.length, ratio = demand / supply;
+      const conv = s.w ? s.carts / s.w : 0;
+      tips.push({ ratio, s, kind, demand, supply, conv, text: fmt(s) });
+    }
+  };
+  consider(bands, 'tempo', (s) => `${s.label} beats (${DB.BANDS.find((b) => b.id === s.key)?.min}–${Math.min(200, DB.BANDS.find((b) => b.id === s.key)?.max)} BPM)`);
+  consider(moods, 'mood', (s) => `${s.label} beats`);
+  consider(segment(rows, (t) => (/minor/.test(t.key) ? 'minor' : 'major')), 'key', (s) => `${s.label}-key beats`);
+  consider(segment(rows, (t) => t.tags).filter((s) => s.n >= 2), 'tag', (s) => `#${s.label} beats`);
+  const more = tips.filter((t) => t.ratio >= 1.25 && t.s.w >= 3).sort((a, b) => b.ratio - a.ratio).slice(0, 4);
+  const less = tips.filter((t) => t.ratio <= 0.6 && t.s.n >= 2).sort((a, b) => a.ratio - b.ratio).slice(0, 2);
+  const pct = (x) => Math.round(x * 100) + '%';
+  $('#suggest').innerHTML =
+    more.map((t) => `<div class="suggest hot"><b>Upload more ${UI.esc(t.text)}</b><br><span class="muted">${pct(t.demand)} of this week's plays from only ${pct(t.supply)} of your catalog (${t.s.n} track${t.s.n > 1 ? 's' : ''}) — ${t.ratio.toFixed(1)}× demand vs supply${t.conv ? `, ${pct(t.conv)} play→cart` : ''}.</span></div>`).join('') +
+    less.map((t) => `<div class="suggest"><b>Ease off ${UI.esc(t.text)}</b><br><span class="muted">${t.s.n} tracks but only ${pct(t.demand)} of plays. Try remixing one at a trending tempo instead.</span></div>`).join('') ||
+    '<p class="muted">Not enough plays yet — suggestions appear once tracks get a few listens this week.</p>';
+  const top = trend[0];
+  if (top && top.w) $('#suggest').innerHTML += `<div class="suggest"><b>Make a sequel to “${UI.esc(top.t.title)}”</b><br><span class="muted">Your #1 this week. Try ${top.t.bpm} BPM in ${UI.esc(top.t.key)} with a similar ${UI.esc(top.t.mood || '')} vibe and tag it ${top.t.tags.slice(0, 3).map((g) => '#' + UI.esc(g)).join(' ')}.</span></div>`;
+}
+
+/* ---------- Upload ---------- */
+const AUDIO_RE = /\.(mp3|wav|aiff?|flac|m4a|ogg|aac)$/i;
+let queue = [];
+
+async function walk(entry, out) {
+  if (entry.isFile) { if (AUDIO_RE.test(entry.name)) out.push(await new Promise((r, j) => entry.file((f) => { f._path = entry.fullPath; r(f); }, j))); return; }
+  const reader = entry.createReader();
+  let batch;
+  do { batch = await new Promise((r, j) => reader.readEntries(r, j)); for (const e of batch) await walk(e, out); } while (batch.length);
+}
+
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
+drop.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  const files = [];
+  const entries = [...e.dataTransfer.items].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (entries.length) for (const en of entries) await walk(en, files);
+  else files.push(...[...e.dataTransfer.files].filter((f) => AUDIO_RE.test(f.name)));
+  enqueue(files);
+});
+$('#pickFiles').onchange = (e) => enqueue([...e.target.files]);
+$('#pickDir').onchange = (e) => enqueue([...e.target.files].filter((f) => AUDIO_RE.test(f.name)));
+
+function enqueue(files) {
+  if (!files.length) return UI.toast('No audio files found');
+  for (const f of files) {
+    const hint = Analyzer.fromFilename(f.name);
+    const folder = (f._path || f.webkitRelativePath || '').split('/').slice(-2, -1)[0] || '';
+    queue.push({ id: DB.uid(), file: f, title: hint.title, hint, tags: folder && !/^\d+$/.test(folder) ? folder.toLowerCase() : '', status: 'waiting' });
+  }
+  $('#queueCard').classList.remove('hidden');
+  renderQueue(); processQueue();
+}
+
+let busy = false;
+async function processQueue() {
+  if (busy) return; busy = true;
+  for (const q of queue) {
+    if (q.status !== 'waiting') continue;
+    q.status = 'analysing'; renderQueue();
+    try {
+      const a = await Analyzer.analyze(q.file);
+      // Filename BPM/key (set by the producer) beats detection when present
+      Object.assign(q, a, q.hint.bpm ? { bpm: q.hint.bpm } : {}, q.hint.key ? { key: q.hint.key } : {});
+      q.mood = Analyzer.moodFor(q);
+      q.status = 'ready';
+    } catch (err) {
+      Object.assign(q, { bpm: q.hint.bpm || 0, key: q.hint.key || 'C minor', energy: 0.6, mood: 'dark', status: q.hint.bpm ? 'ready' : 'error' });
+    }
+    renderQueue();
+  }
+  busy = false;
+}
+
+function renderQueue() {
+  const done = queue.filter((q) => q.status === 'ready' || q.status === 'published').length;
+  $('#qStatus').textContent = `· ${done}/${queue.length} analysed`;
+  const counts = {};
+  queue.filter((q) => q.bpm).forEach((q) => { const b = DB.bandFor(q.bpm); counts[b.id] = (counts[b.id] || 0) + 1; });
+  $('#qBands').innerHTML = DB.BANDS.filter((b) => counts[b.id]).map((b) => `<span class="chip hot">${b.label}: ${counts[b.id]}</span>`).join('');
+  // Group the queue by BPM category
+  const sorted = [...queue].sort((a, b) => (a.bpm || 999) - (b.bpm || 999));
+  $('#queue').innerHTML = sorted.map((q) => {
+    const b = q.bpm ? DB.bandFor(q.bpm) : null;
+    const st = { waiting: '⏳ waiting', analysing: '🔍 analysing…', ready: `✅ ready · ${q.mood}`, published: '🚀 published', error: '⚠ add BPM manually' }[q.status];
+    return `<div class="queue-item" data-q="${q.id}">
+      <div><input class="input" data-f="title" value="${UI.esc(q.title)}"><input class="input" data-f="tags" value="${UI.esc(q.tags)}" placeholder="tags: trap, drake, dark" style="margin-top:4px;font-size:12px"></div>
+      <input class="input" data-f="bpm" type="number" value="${q.bpm || ''}">
+      <input class="input" data-f="key" value="${UI.esc(q.key || '')}">
+      <span>${b ? `<span class="chip">${b.label}</span>` : '—'}</span>
+      <span class="muted">${st}</span></div>`;
+  }).join('');
+  $('#queue').querySelectorAll('input').forEach((inp) => inp.onchange = () => {
+    const q = queue.find((x) => x.id === inp.closest('[data-q]').dataset.q);
+    q[inp.dataset.f] = inp.dataset.f === 'bpm' ? +inp.value : inp.value;
+    if (inp.dataset.f === 'bpm' && q.status === 'error' && q.bpm) q.status = 'ready';
+    if (inp.dataset.f === 'bpm') renderQueue();
+  });
+}
+
+$('#qClear').onclick = () => { queue = queue.filter((q) => q.status === 'analysing'); renderQueue(); };
+$('#qCsv').onclick = () => UI.download('bpm-report.csv', UI.csv([['file', 'path', 'title', 'bpm', 'key', 'mood', 'category'],
+  ...queue.map((q) => [q.file.name, q.file._path || q.file.webkitRelativePath || '', q.title, q.bpm, q.key, q.mood, q.bpm ? DB.bandFor(q.bpm).label : ''])]));
+$('#qPublish').onclick = async () => {
+  const ready = queue.filter((q) => q.status === 'ready');
+  if (!ready.length) return UI.toast('Nothing ready to publish yet');
+  for (const q of ready) {
+    const id = DB.uid();
+    q.status = 'analysing'; renderQueue();
+    try {
+      const audioUrl = await DB.saveAudio(id, q.file); // online: uploads a preview and returns its URL
+      await DB.put('tracks', { id, title: q.title || 'Untitled', bpm: q.bpm, key: q.key, mood: q.mood, energy: q.energy, duration: q.duration,
+        tags: q.tags.split(',').map((s) => s.trim()).filter(Boolean), band: DB.bandFor(q.bpm).id, hasAudio: true,
+        ...(audioUrl ? { audioUrl } : {}), published: Date.now(), file: q.file.name });
+      q.status = 'published';
+    } catch (err) { q.status = 'ready'; UI.toast(`Upload failed for ${q.title}: ${err.message}`); }
+  }
+  renderQueue(); await refresh();
+  UI.toast(`Published ${ready.length} track${ready.length > 1 ? 's' : ''}`);
+  if (S.subs.length) openNotify(ready.map((q) => q.title));
+};
+
+/* ---------- Hard drive catalog (built by tools/build-catalog.ps1, audio served from /drive/) ---------- */
+const TAGS_BY_BAND = { slow: ['sad', 'r&b', 'ballad'], boom: ['boom bap', 'hip hop', 'r&b'], mid: ['hip hop', 'pop rap'],
+  club: ['hip hop', 'club', 'pop trap'], trap: ['trap', 'hip hop'], fast: ['drill', 'trap'] };
+let catalog = [];
+async function loadCatalog() {
+  try { catalog = await (await fetch('catalog.json', { cache: 'no-store' })).json(); } catch { $('#catInfo').textContent = 'No catalog.json found — run tools/build-catalog.ps1 against your beats folder.'; return; }
+  const have = new Set(S.tracks.map((t) => t.file));
+  const fresh = catalog.filter((c) => !have.has(c.file));
+  const counts = {};
+  catalog.forEach((c) => (counts[c.category] = (counts[c.category] || 0) + 1));
+  $('#catInfo').textContent = `${catalog.length} tracks on the drive · ${fresh.length} not in the store yet`;
+  $('#catBands').innerHTML = Object.entries(counts).map(([k, n]) => `<span class="chip hot">${UI.esc(k)}: ${n}</span>`).join('');
+  $('#catImport').disabled = !fresh.length;
+  $('#catImport').onclick = () => importCatalog(fresh);
+}
+async function importCatalog(items) {
+  const btn = $('#catImport'); btn.disabled = true;
+  // The demo catalog and its made-up plays would skew real analytics
+  const demo = S.tracks.filter((t) => t.demo).map((t) => t.id);
+  for (const id of demo) await DB.del('tracks', id);
+  for (const e of S.events.filter((e) => demo.includes(e.trackId))) await DB.del('events', e.id);
+  let i = 0, failed = 0;
+  const started = Date.now();
+  for (const c of items) {
+    i++;
+    const eta = i > 3 ? ` · ~${Math.ceil(((Date.now() - started) / (i - 1)) * (items.length - i + 1) / 60000)} min left` : '';
+    btn.textContent = `Importing ${i}/${items.length}${eta}…`;
+    const url = 'drive/' + c.file.split('\\').map(encodeURIComponent).join('/');
+    let { bpm, key } = c, energy = 0.7, duration;
+    try {
+      // Online mode needs the file to make and upload a preview; offline only when the name lacks BPM/key
+      const blob = DB.cloud || !bpm || !key ? await (await fetch(url)).blob() : null;
+      if (!bpm || !key) {
+        try {
+          const a = await Analyzer.analyze(blob);
+          bpm = bpm || a.bpm; key = key || a.key; energy = a.energy; duration = a.duration;
+        } catch { bpm = bpm || 140; key = key || 'C minor'; }
+      }
+      const id = DB.uid();
+      const audioUrl = DB.cloud ? await DB.saveAudio(id, blob) : url;
+      const band = DB.bandFor(bpm).id;
+      const t = { id, title: c.title, bpm, key, energy, duration, band, tags: TAGS_BY_BAND[band], audioUrl, hasAudio: true, file: c.file, published: Date.now() - i * 1000, needsCheck: !c.bpm };
+      t.mood = Analyzer.moodFor(t);
+      await DB.put('tracks', t);
+    } catch (err) { failed++; console.warn('import failed', c.file, err); }
+  }
+  btn.textContent = 'Import to store';
+  await refresh();
+  UI.toast(`Imported ${items.length - failed} tracks${failed ? ` · ${failed} failed — click Import again to retry` : ''}`);
+}
+
+/* ---------- Tracks ---------- */
+function renderTracks() {
+  const st = Object.fromEntries(stats().map((r) => [r.t.id, r]));
+  $('#trackRows').innerHTML = [...S.tracks].sort((a, b) => b.published - a.published).map((t) => `<tr>
+    <td><b>${UI.esc(t.title)}</b>${t.demo ? ' <span class="chip">demo</span>' : ''}${t.needsCheck ? ' <span class="chip hot">BPM auto-detected — check</span>' : ''}<br><span class="muted" style="font-size:12px">${t.tags.map((g) => '#' + UI.esc(g)).join(' ')}</span></td>
+    <td><input class="input" type="number" data-bpm="${t.id}" value="${t.bpm}" style="width:76px;padding:6px 8px"></td><td>${UI.esc(t.key)}</td><td>${DB.bandFor(t.bpm).label}</td><td>${UI.esc(t.mood || '')}</td>
+    <td>${st[t.id]?.total || 0}</td><td>${st[t.id]?.sales || 0}</td>
+    <td><input type="checkbox" data-vis="${t.id}" ${t.hidden ? '' : 'checked'}></td>
+    <td><button class="btn ghost sm" data-del="${t.id}">Delete</button></td></tr>`).join('');
+  $('#trackRows').querySelectorAll('[data-vis]').forEach((c) => c.onchange = async () => {
+    const t = S.tracks.find((x) => x.id === c.dataset.vis); t.hidden = !c.checked; await DB.put('tracks', t);
+  });
+  $('#trackRows').querySelectorAll('[data-bpm]').forEach((inp) => inp.onchange = async () => {
+    const t = S.tracks.find((x) => x.id === inp.dataset.bpm);
+    Object.assign(t, { bpm: +inp.value, band: DB.bandFor(+inp.value).id, needsCheck: false });
+    await DB.put('tracks', t); refresh();
+  });
+  $('#trackRows').querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
+    const t = S.tracks.find((x) => x.id === b.dataset.del);
+    if (!confirm(`Delete “${t.title}” from the store? Its play history is kept.`)) return;
+    await DB.del('tracks', t.id); await DB.del('audio', t.id); refresh();
+  });
+}
+
+/* ---------- Subscribers + notify ---------- */
+function renderSubs() {
+  $('#subCount').textContent = `(${S.subs.length})`;
+  $('#subRows').innerHTML = S.subs.sort((a, b) => b.ts - a.ts).map((s) => `<tr><td>${UI.esc(s.email)}</td><td>${UI.esc(s.name)}</td>
+    <td class="muted">${UI.esc((s.prefs || []).join(', '))}</td><td>${UI.esc(s.source)}</td><td>${new Date(s.ts).toLocaleDateString()}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="muted">No subscribers yet — the signup form is on the store page.</td></tr>';
+}
+$('#subCsv').onclick = () => UI.download('subscribers.csv', UI.csv([['email', 'name', 'prefs', 'source', 'joined'], ...S.subs.map((s) => [s.email, s.name, (s.prefs || []).join('; '), s.source, new Date(s.ts).toISOString()])]));
+$('#notify').onclick = () => openNotify(S.tracks.filter((t) => t.published > Date.now() - 7 * DAY).map((t) => t.title));
+
+function openNotify(titles) {
+  const name = S.settings.producer;
+  const subject = titles.length ? `🔥 New beat${titles.length > 1 ? 's' : ''} just dropped: ${titles.slice(0, 3).join(', ')}` : '🔥 New beats just dropped';
+  const body = `Yo!\n\n${name} just uploaded ${titles.length || 'new'} beat${titles.length === 1 ? '' : 's'}:\n${titles.map((t) => '• ' + t).join('\n')}\n\nListen + grab a license before they're gone: ${location.origin}/index.html\n\n— ${name}`;
+  $('#layer').innerHTML = `<div class="modal-wrap" id="mw"><div class="modal">
+    <div class="row"><h2 class="grow" style="margin:0">Announce to ${S.subs.length} subscriber${S.subs.length === 1 ? '' : 's'}</h2><button class="btn ghost sm" id="mx">✕</button></div>
+    <label>Subject<br><input class="input" id="nSub" style="width:100%" value="${UI.esc(subject)}"></label>
+    <label style="display:block;margin-top:10px">Message<br><textarea id="nBody" rows="10" style="width:100%">${UI.esc(body)}</textarea></label>
+    <p class="muted" style="font-size:13px">Opens your email app with subscribers in BCC. For large lists, export the CSV into Mailchimp / ConvertKit and send from there.</p>
+    <div class="row"><button class="btn ghost" id="nCopy">Copy message</button><span class="grow"></span><button class="btn primary" id="nSend">Open in email app</button></div></div></div>`;
+  $('#mx').onclick = () => ($('#layer').innerHTML = '');
+  $('#nCopy').onclick = () => UI.copy(`${$('#nSub').value}\n\n${$('#nBody').value}`);
+  $('#nSend').onclick = () => {
+    location.href = `mailto:?bcc=${encodeURIComponent(S.subs.map((s) => s.email).join(','))}&subject=${encodeURIComponent($('#nSub').value)}&body=${encodeURIComponent($('#nBody').value)}`;
+  };
+}
+
+/* ---------- Orders ---------- */
+function renderOrders() {
+  $('#orderRows').innerHTML = S.orders.sort((a, b) => b.ts - a.ts).map((o) => `<tr><td>${new Date(o.ts).toLocaleString()}</td><td>${UI.esc(o.email)}</td>
+    <td>${o.items.map((i) => `${UI.esc(i.title)} <span class="muted">(${UI.esc(i.license)})</span>`).join('<br>')}</td><td>${UI.money(o.total)}</td>
+    <td><span class="chip">${UI.esc({ 'sent-to-stripe': 'Sent to Stripe — confirm in Stripe Payments', 'demo-paid': 'Demo (not charged)' }[o.status] || o.status)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No orders yet.</td></tr>';
+}
+
+/* ---------- Settings ---------- */
+function renderSettings() {
+  const f = $('#setForm'), s = S.settings;
+  f.producer.value = s.producer; f.tagline.value = s.tagline; f.newsletterEndpoint.value = s.newsletterEndpoint || '';
+  $('#licEdit').innerHTML = s.licenses.map((l) => `<div class="row" style="margin-bottom:8px">
+    <b style="width:200px">${UI.esc(l.name)}</b><input class="input" type="number" step="0.01" data-price="${l.id}" value="${l.price}" style="width:110px">
+    <input class="input grow" data-link="${l.id}" value="${UI.esc(s.stripeLinks[l.id] || '')}" placeholder="https://buy.stripe.com/…"></div>`).join('');
+}
+$('#setForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target, s = S.settings;
+  s.producer = f.producer.value.trim() || s.producer; s.tagline = f.tagline.value.trim(); s.newsletterEndpoint = f.newsletterEndpoint.value.trim();
+  document.querySelectorAll('[data-price]').forEach((i) => { s.licenses.find((l) => l.id === i.dataset.price).price = +i.value; });
+  document.querySelectorAll('[data-link]').forEach((i) => { s.stripeLinks[i.dataset.link] = i.value.trim(); });
+  await DB.saveSettings(s); UI.toast('Settings saved');
+};
+$('#resetDemo').onclick = async () => {
+  if (!confirm('Remove the 8 demo tracks and their fake play history?')) return;
+  const demo = S.tracks.filter((t) => t.demo).map((t) => t.id);
+  for (const id of demo) await DB.del('tracks', id);
+  for (const e of S.events.filter((e) => demo.includes(e.trackId))) await DB.del('events', e.id);
+  await DB.put('settings', { ...S.settings, seeded: true }, 'main');
+  refresh();
+};
+
+gate();
+</script>
+</body>
+</html>

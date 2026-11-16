@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beat Store</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav class="top">
+  <div class="wrap">
+    <a class="logo" href="#" id="brand">BEAT<span>STORE</span></a>
+    <div class="links grow">
+      <a href="#beats">Beats</a><a href="#hookwriter">Hook Writer</a><a href="#newsletter">Get Notified</a>
+    </div>
+    <button class="btn ghost cart-btn" id="cartBtn">🛒 Cart <span class="badge hidden" id="cartCount">0</span></button>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <h1 id="heroTitle">Beats that hit different.</h1>
+    <p class="lead" id="heroTag"></p>
+    <div class="feature" id="featured"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="beats">
+    <div class="row"><h2 class="grow">All Beats</h2><span class="muted" id="beatCount"></span></div>
+    <div class="row filters">
+      <input class="input grow" id="q" placeholder="Search title, tag, type beat…">
+      <select id="fBand"><option value="">All tempos</option></select>
+      <select id="fMode"><option value="">Any key</option><option value="minor">Minor keys</option><option value="major">Major keys</option></select>
+      <select id="fSort"><option value="trending">Trending</option><option value="new">Newest</option><option value="plays">Most played</option><option value="bpm">BPM ↑</option></select>
+    </div>
+    <div class="tracklist" id="tracklist"></div>
+  </section>
+
+  <section id="hookwriter">
+    <h2>🎤 AI Hook Writer</h2>
+    <p class="muted">Pick a beat (or upload your own). We analyse the tempo, key, energy and mood, then write ranked hook options and a ready-to-paste prompt for Suno.</p>
+    <div class="card">
+      <div class="grid4">
+        <label>Beat<br><select id="hwTrack" style="width:100%"></select></label>
+        <label>Theme<br><select id="hwTheme" style="width:100%"><option value="auto">Auto (match the mood)</option></select></label>
+        <label>Your hook title (optional)<br><input class="input" id="hwTitle" placeholder="e.g. Imperator" style="width:100%"></label>
+        <label>Vocal style<br><select id="hwVocal" style="width:100%">
+          <option value="">Auto</option><option>male rap vocals, confident delivery</option><option>melodic male vocals, auto-tune</option>
+          <option>female R&amp;B vocals, smooth</option><option>female rap vocals, aggressive</option><option>chant vocals, crowd gang vocals</option>
+        </select></label>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <label class="btn ghost sm">⬆ Analyse my own beat<input type="file" id="hwFile" accept="audio/*" hidden></label>
+        <span class="muted grow" id="hwAnalysis"></span>
+        <button class="btn purple" id="hwGo">Write hooks</button>
+      </div>
+    </div>
+    <div class="hooks" id="hooks"></div>
+  </section>
+
+  <section id="newsletter">
+    <div class="newsletter">
+      <h2>🔔 Never miss a drop</h2>
+      <p class="muted" style="margin:0">Get an email the moment new beats are uploaded — plus subscriber-only discounts.</p>
+      <form id="subForm">
+        <input class="input" type="text" name="name" placeholder="Artist name">
+        <input class="input" type="email" name="email" placeholder="you@email.com" required>
+        <button class="btn primary">Notify me</button>
+      </form>
+      <div class="row" style="margin-top:10px" id="subPrefs"></div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap row"><span class="grow">© <span id="yr"></span> <span id="footName"></span>. All beats licensed per the terms shown at checkout.</span><a class='muted' href='/admin'>Producer login</a></div></footer>
+
+<div class="player hidden" id="player">
+  <div class="wrap">
+    <button class="play sm" id="pBtn">▶</button>
+    <div class="mini" id="pCover" style="width:44px;height:44px;border-radius:8px"></div>
+    <div style="min-width:160px"><b id="pTitle"></b><div class="muted" id="pMeta" style="font-size:13px"></div></div>
+    <div class="progress" id="pProg"><i></i></div>
+    <button class="btn primary sm" id="pBuy">Buy</button>
+  </div>
+  <audio id="audio"></audio>
+</div>
+
+<div id="layer"></div>
+
+<script src="js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/db.js"></script>
+<script src="js/db-cloud.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/analyze.js"></script>
+<script src="js/hooks.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { tracks: [], plays: {}, recent: {}, settings: null, cart: [], current: null, sel: 'sync', ownBeat: null };
+try { state.cart = JSON.parse(localStorage.getItem('cart') || '[]'); } catch {}
+
+async function load() {
+  await DB.seedIfEmpty();
+  state.settings = await DB.settings();
+  state.tracks = (await DB.all('tracks')).filter((t) => !t.hidden);
+  Object.assign(state, await DB.trackStats());
+  const s = state.settings;
+  document.title = `${s.producer} — Beat Store`;
+  $('#brand').innerHTML = UI.esc(s.producer).replace(/^(\S+)/, '$1<span>') + '</span>';
+  $('#heroTag').textContent = s.tagline;
+  $('#footName').textContent = s.producer;
+  $('#yr').textContent = new Date().getFullYear();
+  renderFeatured(); renderCatalog(); renderCart(); setupHookWriter(); setupNewsletter();
+}
+
+const lic = (id) => state.settings.licenses.find((l) => l.id === id);
+const trending = () => [...state.tracks].sort((a, b) => (state.recent[b.id] || 0) - (state.recent[a.id] || 0));
+
+function renderFeatured() {
+  const t = trending()[0];
+  if (!t) { $('#featured').innerHTML = '<p class="muted">No beats uploaded yet.</p>'; return; }
+  const L = lic(state.sel) || state.settings.licenses[0];
+  $('#featured').innerHTML = `
+    <div class="cover" style="${UI.cover(t.title)}">${UI.esc(t.title)}<button class="play cover-play" data-play="${t.id}">▶</button></div>
+    <div>
+      <span class="chip hot">🔥 Trending this week</span>
+      <h2 style="margin:8px 0 0;font-size:30px">${UI.esc(t.title)} <span class="muted" style="font-size:16px;font-weight:400">(${UI.esc(t.tags.join(' '))} / ${t.bpm} BPM ${UI.esc(t.key)})</span></h2>
+      <div class="stats"><div><b>${UI.compact(state.plays[t.id] || 0)}</b>Plays</div><div><b>${t.bpm}</b>BPM</div><div><b>${UI.esc(t.key)}</b>Key</div><div><b>${new Date(t.published).toLocaleDateString()}</b>Published</div></div>
+      <div style="margin-bottom:14px">${t.tags.map((g) => `<span class="chip">#${UI.esc(g)}</span>`).join('')}</div>
+      <div class="licenses">${state.settings.licenses.map((l) => `
+        <div class="lic ${l.id === L.id ? 'sel' : ''}" data-lic="${l.id}"><b>${UI.esc(l.name)}</b><div class="price">${UI.money(l.price)}</div><small>${UI.esc(l.files)}${l.deal ? ' · ' + UI.esc(l.deal) : ''}</small></div>`).join('')}
+      </div>
+      <ul class="terms">${L.terms.map((x) => `<li>${UI.esc(x)}</li>`).join('')}</ul>
+      <div class="row" style="margin-top:16px"><b style="font-size:22px" class="grow">Total: ${UI.money(L.price)}</b>
+        <button class="btn ghost" data-add="${t.id}">Add to cart</button><button class="btn primary" data-buy="${t.id}">Buy now</button></div>
+    </div>`;
+  $('#featured').querySelectorAll('[data-lic]').forEach((el) => el.onclick = () => { state.sel = el.dataset.lic; renderFeatured(); });
+}
+
+function renderCatalog() {
+  const band = $('#fBand');
+  if (band.options.length === 1) DB.BANDS.forEach((b) => band.add(new Option(`${b.label} (${b.min}–${b.max > 300 ? '+' : b.max})`, b.id)));
+  const q = $('#q').value.toLowerCase(), fb = band.value, fm = $('#fMode').value, sort = $('#fSort').value;
+  let list = state.tracks.filter((t) =>
+    (!q || [t.title, ...t.tags, t.key].join(' ').toLowerCase().includes(q)) &&
+    (!fb || t.band === fb) && (!fm || t.key.includes(fm)));
+  const by = { trending: (a, b) => (state.recent[b.id] || 0) - (state.recent[a.id] || 0), new: (a, b) => b.published - a.published,
+    plays: (a, b) => (state.plays[b.id] || 0) - (state.plays[a.id] || 0), bpm: (a, b) => a.bpm - b.bpm };
+  list.sort(by[sort]);
+  const min = Math.min(...state.settings.licenses.map((l) => l.price));
+  $('#beatCount').textContent = `${list.length} beat${list.length === 1 ? '' : 's'}`;
+  const limit = state.limit || 40;
+  $('#tracklist').innerHTML = list.slice(0, limit).map((t) => `
+    <div class="trk ${state.current?.id === t.id ? 'playing' : ''}">
+      <button class="play sm" data-play="${t.id}">${state.current?.id === t.id && !isPaused() ? '❚❚' : '▶'}</button>
+      <div class="mini" style="${UI.cover(t.title)}">${UI.esc(t.title.slice(0, 2).toUpperCase())}</div>
+      <div class="t"><b>${UI.esc(t.title)}</b>${t.tags.slice(0, 3).map((g) => `<span class="chip">#${UI.esc(g)}</span>`).join('')}</div>
+      <div class="num">${t.bpm} BPM</div>
+      <div class="num hide-sm">${UI.esc(t.key)}</div>
+      <div class="num hide-sm">▶ ${UI.compact(state.plays[t.id] || 0)}</div>
+      <button class="btn primary sm" data-open="${t.id}">🛒 ${UI.money(min)}</button>
+    </div>`).join('') || '<p class="muted" style="padding:20px">No beats match those filters.</p>';
+  if (list.length > limit) {
+    $('#tracklist').insertAdjacentHTML('beforeend', `<div style="padding:14px;text-align:center"><button class="btn ghost" id="more">Show more (${list.length - limit} left)</button></div>`);
+    $('#more').onclick = () => { state.limit = limit + 40; renderCatalog(); };
+  }
+}
+['#q', '#fBand', '#fMode', '#fSort'].forEach((s) => $(s).addEventListener('input', renderCatalog));
+
+/* ---------- Player + play counter ---------- */
+const audio = $('#audio');
+let demoPlaying = false, urls = {};
+const isPaused = () => (state.current?.hasAudio ? audio.paused : !demoPlaying);
+
+async function play(id) {
+  const t = state.tracks.find((x) => x.id === id);
+  if (state.current?.id === id) { // toggle
+    if (t.hasAudio) audio.paused ? audio.play() : audio.pause();
+    else if (demoPlaying) { DemoSynth.stop(); demoPlaying = false; } else startDemo(t);
+    return refreshPlayer();
+  }
+  DemoSynth.stop(); demoPlaying = false; audio.pause();
+  state.current = t;
+  if (t.audioUrl) { audio.src = t.audioUrl; audio.play(); }
+  else if (t.hasAudio) {
+    if (!urls[id]) { const blob = await DB.get('audio', id); urls[id] = URL.createObjectURL(blob); }
+    audio.src = urls[id]; audio.play();
+  } else startDemo(t);
+  // Count a play once per track per 30s to avoid inflating on rapid toggles
+  const last = state.lastCount?.[id] || 0;
+  if (Date.now() - last > 30000) {
+    (state.lastCount ||= {})[id] = Date.now();
+    await DB.logEvent('play', id);
+    state.plays[id] = (state.plays[id] || 0) + 1; state.recent[id] = (state.recent[id] || 0) + 1;
+  }
+  refreshPlayer();
+}
+function startDemo(t) {
+  demoPlaying = true; const t0 = Date.now();
+  DemoSynth.play(t, 15, () => { demoPlaying = false; refreshPlayer(); });
+  const tick = () => { if (!demoPlaying || state.current !== t) return; $('#pProg i').style.width = Math.min(100, (Date.now() - t0) / 150) + '%'; requestAnimationFrame(tick); };
+  tick();
+}
+function refreshPlayer() {
+  const t = state.current; if (!t) return;
+  $('#player').classList.remove('hidden');
+  $('#pTitle').textContent = t.title;
+  $('#pMeta').textContent = `${t.bpm} BPM · ${t.key}${t.hasAudio ? '' : ' · preview'}`;
+  $('#pCover').setAttribute('style', $('#pCover').getAttribute('style').replace(/background:.*?;/, '') + UI.cover(t.title));
+  $('#pBtn').textContent = isPaused() ? '▶' : '❚❚';
+  renderCatalog();
+}
+audio.ontimeupdate = () => { $('#pProg i').style.width = (audio.currentTime / audio.duration * 100 || 0) + '%'; };
+audio.onplay = audio.onpause = refreshPlayer;
+$('#pProg').onclick = (e) => { if (audio.duration) audio.currentTime = (e.offsetX / e.currentTarget.clientWidth) * audio.duration; };
+$('#pBtn').onclick = () => state.current && play(state.current.id);
+$('#pBuy').onclick = () => state.current && openLicense(state.current.id);
+
+/* ---------- Licensing + cart ---------- */
+function openLicense(id) {
+  const t = state.tracks.find((x) => x.id === id);
+  let sel = state.sel;
+  const draw = () => {
+    const L = lic(sel);
+    $('#layer').innerHTML = `<div class="modal-wrap" id="mw"><div class="modal">
+      <div class="row"><h2 class="grow" style="margin:0">Licensing — ${UI.esc(t.title)}</h2><button class="btn ghost sm" id="mx">✕</button></div>
+      <p class="muted">${t.bpm} BPM · ${UI.esc(t.key)} · ${t.tags.map((g) => '#' + UI.esc(g)).join(' ')}</p>
+      <div class="licenses">${state.settings.licenses.map((l) => `<div class="lic ${l.id === sel ? 'sel' : ''}" data-l="${l.id}"><b>${UI.esc(l.name)}</b><div class="price">${UI.money(l.price)}</div><small>${UI.esc(l.files)}</small></div>`).join('')}</div>
+      <h4 style="margin:18px 0 4px">Usage terms — ${UI.esc(L.name)}</h4><ul class="terms">${L.terms.map((x) => `<li>${UI.esc(x)}</li>`).join('')}</ul>
+      <div class="row" style="margin-top:18px"><b class="grow" style="font-size:22px">Total: ${UI.money(L.price)}</b>
+      <button class="btn ghost" id="madd">Add to cart</button><button class="btn primary" id="mbuy">Buy now</button></div></div></div>`;
+    $('#layer').querySelectorAll('[data-l]').forEach((e) => e.onclick = () => { sel = e.dataset.l; draw(); });
+    $('#mx').onclick = closeLayer; $('#mw').onclick = (e) => e.target.id === 'mw' && closeLayer();
+    $('#madd').onclick = () => { addToCart(id, sel); closeLayer(); };
+    $('#mbuy').onclick = () => { addToCart(id, sel); openCart(); };
+  };
+  draw();
+}
+const closeLayer = () => { $('#layer').innerHTML = ''; };
+
+function addToCart(trackId, licId) {
+  if (!state.cart.some((c) => c.trackId === trackId && c.licId === licId)) state.cart.push({ trackId, licId });
+  try { localStorage.setItem('cart', JSON.stringify(state.cart)); } catch {}
+  DB.logEvent('cart', trackId, { licId });
+  renderCart(); UI.toast('Added to cart');
+}
+function renderCart() {
+  const n = state.cart.length;
+  $('#cartCount').textContent = n; $('#cartCount').classList.toggle('hidden', !n);
+}
+function openCart() {
+  const items = state.cart.map((c) => ({ ...c, t: state.tracks.find((t) => t.id === c.trackId), l: lic(c.licId) })).filter((c) => c.t && c.l);
+  const total = items.reduce((a, c) => a + c.l.price, 0);
+  $('#layer').innerHTML = `<div class="overlay" id="ov"><div class="drawer">
+    <div class="row"><h2 class="grow" style="margin:0">Your cart</h2><button class="btn ghost sm" id="cx">✕</button></div>
+    ${items.map((c, i) => `<div class="cart-item"><div><b>${UI.esc(c.t.title)}</b><div class="muted" style="font-size:13px">${UI.esc(c.l.name)} · ${UI.esc(c.l.files)}</div></div>
+      <div style="text-align:right"><b>${UI.money(c.l.price)}</b><br><a href="#" class="muted" data-rm="${i}" style="font-size:12px">remove</a></div></div>`).join('') || '<p class="muted">Cart is empty.</p>'}
+    ${items.length ? `<div class="row" style="margin:18px 0"><b class="grow">Total</b><b style="font-size:22px">${UI.money(total)}</b></div>
+    <form id="co"><input class="input" type="email" name="email" placeholder="Email for delivery" required style="width:100%;margin-bottom:10px">
+    <label class="muted" style="font-size:13px;display:block;margin-bottom:12px"><input type="checkbox" name="sub" checked> Notify me when new beats drop</label>
+    <button class="btn primary" style="width:100%">Checkout ${UI.money(total)}</button></form>
+    <p class="muted" style="font-size:12px">Secure checkout via Stripe when payment links are configured in the back office.</p>` : ''}
+  </div></div>`;
+  $('#cx').onclick = closeLayer; $('#ov').onclick = (e) => e.target.id === 'ov' && closeLayer();
+  $('#layer').querySelectorAll('[data-rm]').forEach((a) => a.onclick = (e) => { e.preventDefault(); state.cart.splice(+a.dataset.rm, 1); localStorage.setItem('cart', JSON.stringify(state.cart)); renderCart(); openCart(); });
+  const form = $('#co');
+  if (form) form.onsubmit = async (e) => {
+    e.preventDefault();
+    const email = form.email.value.trim();
+    if (form.sub.checked) await subscribe(email, '', ['all'], 'checkout').catch(() => {});
+    const order = { id: DB.uid(), email, items: items.map((c) => ({ trackId: c.trackId, title: c.t.title, licId: c.licId, license: c.l.name, price: c.l.price })), total, ts: Date.now(), status: 'pending' };
+    const links = state.settings.stripeLinks;
+    if (items.every((c) => links[c.licId])) {
+      // Stripe Payment Links are one per license, so the beat rides along in client_reference_id
+      // (shown on the payment in your Stripe dashboard, e.g. "BillionaireBoys_140__sync").
+      const pay = (c) => {
+        const ref = `${(c.t.file || c.t.title).replace(/\.[^.]+$/, '').replace(/#/g, 's').replace(/[^A-Za-z0-9_-]/g, '')}__${c.licId}`.slice(0, 200);
+        const l = links[c.licId];
+        return `${l}${l.includes('?') ? '&' : '?'}client_reference_id=${encodeURIComponent(ref)}&prefilled_email=${encodeURIComponent(email)}`;
+      };
+      try { await DB.insert('orders', { ...order, status: 'sent-to-stripe' }); } catch (err) { console.warn('order log failed', err); }
+      if (items.length === 1) { location.href = pay(items[0]); return; }
+      $('#layer').querySelector('.drawer').innerHTML = `<h2>Pay for each beat</h2><p class="muted">Each license is a separate secure Stripe payment.</p>
+        ${items.map((c) => `<div class="cart-item"><div><b>${UI.esc(c.t.title)}</b><div class="muted" style="font-size:13px">${UI.esc(c.l.name)}</div></div>
+          <a class="btn primary sm" target="_blank" rel="noopener" href="${UI.esc(pay(c))}">Pay ${UI.money(c.l.price)}</a></div>`).join('')}
+        <button class="btn ghost" id="cx2" style="margin-top:16px">Done</button>`;
+      $('#cx2').onclick = () => { state.cart = []; localStorage.setItem('cart', '[]'); renderCart(); closeLayer(); };
+      return;
+    }
+    if (DB.cloud) { // live site without Stripe links: never pretend a sale happened
+      $('#layer').querySelector('.drawer').innerHTML = `<h2>Checkout coming soon</h2><p class="muted">Online payments aren't switched on yet. Join the email list and we'll let you know.</p><button class="btn" id="cx2">Close</button>`;
+      $('#cx2').onclick = closeLayer;
+      return;
+    }
+    order.status = 'demo-paid';
+    await DB.put('orders', order);
+    for (const it of order.items) await DB.logEvent('purchase', it.trackId, { licId: it.licId, price: it.price });
+    state.cart = []; localStorage.setItem('cart', '[]'); renderCart();
+    $('#layer').querySelector('.drawer').innerHTML = `<h2>✅ Order confirmed</h2><p>Thanks! Download links for ${items.length} beat${items.length > 1 ? 's' : ''} will be sent to <b>${UI.esc(email)}</b>.</p>
+      <p class="muted" style="font-size:13px">Demo mode: no card was charged. Add Stripe Payment Links in the back office to take real payments.</p><button class="btn" id="cx2">Close</button>`;
+    $('#cx2').onclick = closeLayer;
+  };
+}
+$('#cartBtn').onclick = openCart;
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-play],[data-open],[data-add],[data-buy]');
+  if (!b) return;
+  if (b.dataset.play) play(b.dataset.play);
+  if (b.dataset.open) openLicense(b.dataset.open);
+  if (b.dataset.add) addToCart(b.dataset.add, state.sel);
+  if (b.dataset.buy) { addToCart(b.dataset.buy, state.sel); openCart(); }
+});
+
+/* ---------- Newsletter ---------- */
+const PREFS = ['Trap', 'Drill', 'R&B', 'Afrobeat', 'Pop', 'Boom Bap'];
+function setupNewsletter() {
+  $('#subPrefs').innerHTML = '<span class="muted" style="font-size:13px">I want:</span>' + PREFS.map((p) => `<label class="chip"><input type="checkbox" value="${p}" checked> ${p}</label>`).join('');
+  $('#subForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target, prefs = [...document.querySelectorAll('#subPrefs input:checked')].map((i) => i.value);
+    try { await subscribe(f.email.value.trim(), f.name.value.trim(), prefs, 'newsletter'); }
+    catch (err) { UI.toast("Couldn't sign you up — check your email and try again"); return; }
+    f.reset(); UI.toast("You're on the list 🔔");
+  };
+}
+async function subscribe(email, name, prefs, source) {
+  await DB.subscribe({ email, name, prefs, source });
+  const ep = state.settings.newsletterEndpoint;
+  if (ep) fetch(ep, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ email, name, prefs: prefs.join(',') }) }).catch(() => {});
+}
+
+/* ---------- Hook writer ---------- */
+function setupHookWriter() {
+  $('#hwTrack').innerHTML = trending().map((t) => `<option value="${t.id}">${UI.esc(t.title)} — ${t.bpm} BPM ${UI.esc(t.key)}</option>`).join('');
+  HookWriter.THEMES.forEach((t) => $('#hwTheme').add(new Option(t[0].toUpperCase() + t.slice(1), t)));
+  const describe = (t) => `Analysis: <b>${t.bpm} BPM</b> · <b>${UI.esc(t.key)}</b> · mood <b>${UI.esc(t.mood)}</b> · energy ${Math.round((t.energy || 0.7) * 100)}% · target ≈${HookWriter.targetSyllables(t.bpm)} syllables/line`;
+  const cur = () => state.ownBeat || state.tracks.find((t) => t.id === $('#hwTrack').value);
+  $('#hwTrack').onchange = () => { state.ownBeat = null; $('#hwAnalysis').innerHTML = describe(cur()); };
+  $('#hwAnalysis').innerHTML = cur() ? describe(cur()) : '';
+  $('#hwFile').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    $('#hwAnalysis').textContent = `Analysing ${f.name}…`;
+    try {
+      const a = await Analyzer.analyze(f), hint = Analyzer.fromFilename(f.name);
+      state.ownBeat = { title: hint.title || 'My beat', tags: [], ...a, ...(hint.bpm ? { bpm: hint.bpm } : {}), ...(hint.key ? { key: hint.key } : {}) };
+      state.ownBeat.mood = Analyzer.moodFor(state.ownBeat);
+      $('#hwAnalysis').innerHTML = `<b>${UI.esc(state.ownBeat.title)}</b> — ` + describe(state.ownBeat);
+    } catch (err) { $('#hwAnalysis').textContent = "Couldn't read that file — try MP3 or WAV."; }
+  };
+  $('#hwGo').onclick = () => {
+    const t = cur(); if (!t) return;
+    const hooks = HookWriter.generate(t, { theme: $('#hwTheme').value, title: $('#hwTitle').value, vocal: $('#hwVocal').value });
+    $('#hooks').innerHTML = hooks.map((h, i) => `
+      <div class="hook">
+        <div class="row"><span class="score ${h.score >= 75 ? 'g' : 'y'}">${h.score}</span><span class="muted grow">hook score</span>
+          <span class="chip">${UI.esc(h.theme)}</span><span class="chip">${UI.esc(h.structure)}</span></div>
+        <div class="meter"><i style="width:${h.score}%"></i></div>
+        <pre>${h.lines.map(UI.esc).join('\n')}</pre>
+        <div class="muted" style="font-size:12px">Rhyme ${Math.round(h.rhyme * 100)}% · Flow fit ${Math.round(h.fit * 100)}% (≈${h.target} syl/line)</div>
+        <div class="suno"><b>Suno — Style of Music</b><code>${UI.esc(h.suno.style)}</code>
+          <div class="row" style="margin-top:8px"><button class="btn sm" data-cs="${i}">Copy style</button><button class="btn sm" data-cl="${i}">Copy lyrics</button>
+          <a class="btn sm purple" href="https://suno.com/create" target="_blank" rel="noopener">Open Suno ↗</a></div></div>
+      </div>`).join('');
+    $('#hooks').querySelectorAll('[data-cs]').forEach((b) => b.onclick = () => UI.copy(hooks[b.dataset.cs].suno.style));
+    $('#hooks').querySelectorAll('[data-cl]').forEach((b) => b.onclick = () => UI.copy(hooks[b.dataset.cl].suno.lyrics));
+  };
+}
+
+load();
+</script>
+</body>
+</html>
