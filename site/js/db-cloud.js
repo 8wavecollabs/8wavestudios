@@ -75,6 +75,29 @@
     return sb.storage.from('previews').getPublicUrl(`${id}.mp3`).data.publicUrl;
   }
 
+  // Crate listing photos (public bucket); returns the public URL
+  async function uploadImage(path, blob) {
+    check(await sb.storage.from('crate').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: true }));
+    return sb.storage.from('crate').getPublicUrl(path).data.publicUrl;
+  }
+  async function removeImages(urls) {
+    const paths = urls.map((u) => (u.split('/object/public/crate/')[1] || '').split('?')[0]).filter(Boolean);
+    if (paths.length) await sb.storage.from('crate').remove(paths);
+  }
+
+  // Server function prices the records, holds them and returns the Stripe Checkout URL
+  async function crateCheckout(ids, region, email) {
+    const { data, error } = await sb.functions.invoke('crate-checkout', { body: { ids, region, email } });
+    if (error) {
+      let body = {};
+      try { body = await error.context.json(); } catch {}
+      const e = new Error(body.error || 'Checkout is unavailable right now. Please try again shortly.');
+      e.unavailable = body.unavailable || [];
+      throw e;
+    }
+    return data.url;
+  }
+
   async function session() {
     const { data } = await sb.auth.getSession();
     if (!data.session) return null;
@@ -89,6 +112,6 @@
 
   Object.assign(DB, {
     cloud: true, all, get, put, insert, del, settings, saveSettings, logEvent, trackStats, subscribe, saveAudio,
-    session, signIn, signOut, seedIfEmpty: async () => {},
+    session, signIn, signOut, seedIfEmpty: async () => {}, uploadImage, removeImages, crateCheckout,
   });
 })();

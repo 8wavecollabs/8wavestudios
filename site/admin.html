@@ -31,6 +31,7 @@
     <button data-tab="dash" class="on">📊 Dashboard</button>
     <button data-tab="upload">⬆ Upload</button>
     <button data-tab="tracks">🎵 Tracks</button>
+    <button data-tab="crate">💿 Crate</button>
     <button data-tab="subs">🔔 Subscribers</button>
     <button data-tab="orders">💳 Orders</button>
     <button data-tab="settings">⚙ Settings</button>
@@ -82,6 +83,18 @@
     <div class="card"><table><thead><tr><th>Track</th><th>BPM</th><th>Key</th><th>Category</th><th>Mood</th><th>Plays</th><th>Sales</th><th>Visible</th><th></th></tr></thead><tbody id="trackRows"></tbody></table></div>
   </div>
 
+  <!-- Crate (vinyl listings) -->
+  <div data-pane="crate" class="hidden">
+    <div class="row" style="margin-bottom:14px">
+      <h3 class="grow" style="margin:0">💿 The Crate <span class="muted" id="crCount"></span></h3>
+      <input class="input" id="crQ" placeholder="Search listings">
+      <select id="crStatus"><option value="">All statuses</option><option value="available">For sale</option><option value="pending">On hold</option><option value="sold">Sold</option><option value="hidden">Draft / hidden</option></select>
+      <a class="btn ghost sm" href="crate.html" target="_blank">View crate ↗</a>
+      <button class="btn primary" id="crNew">+ List a record</button>
+    </div>
+    <div class="card"><table><thead><tr><th></th><th>Record</th><th>Format</th><th>Condition</th><th>Price</th><th>Status</th><th></th></tr></thead><tbody id="crRows"></tbody></table></div>
+  </div>
+
   <!-- Subscribers -->
   <div data-pane="subs" class="hidden">
     <div class="card">
@@ -106,6 +119,13 @@
       <h3>Licenses &amp; Stripe Payment Links</h3>
       <p class="muted" style="font-size:13px">Create a Payment Link per license in your Stripe dashboard and paste it here. Without a link, checkout runs in demo mode (no charge).</p>
       <div id="licEdit"></div>
+      <h3>Vinyl shipping (The Crate)</h3>
+      <div class="grid4">
+        <label>US · first record $<br><input class="input" type="number" step="0.01" min="0" name="usFirst" style="width:100%"></label>
+        <label>US · each extra $<br><input class="input" type="number" step="0.01" min="0" name="usEach" style="width:100%"></label>
+        <label>International · first $<br><input class="input" type="number" step="0.01" min="0" name="intlFirst" style="width:100%"></label>
+        <label>International · each extra $<br><input class="input" type="number" step="0.01" min="0" name="intlEach" style="width:100%"></label>
+      </div>
       <h3>Email list sync (optional)</h3>
       <label>Form endpoint (Mailchimp / ConvertKit / Formspree POST URL)<br><input class="input" name="newsletterEndpoint" style="width:100%" placeholder="https://…"></label>
       <div class="row" style="margin-top:18px"><button class="btn primary">Save settings</button><span class="grow"></span>
@@ -156,6 +176,8 @@ async function refresh() {
   await DB.seedIfEmpty();
   [S.tracks, S.events, S.subs, S.orders, S.settings] = await Promise.all([DB.all('tracks'), DB.all('events'), DB.all('subscribers'), DB.all('orders'), DB.settings()]);
   renderDash(); renderTracks(); renderSubs(); renderOrders(); renderSettings(); loadCatalog();
+  if (typeof CrateAdmin !== 'undefined') CrateAdmin.load(); // crate-admin.js loads after this script
+
 }
 
 /* ---------- Analytics ---------- */
@@ -454,16 +476,35 @@ function openNotify(titles) {
 }
 
 /* ---------- Orders ---------- */
+const ORDER_STATUS = { 'sent-to-stripe': 'Sent to Stripe — confirm in Stripe Payments', 'demo-paid': 'Demo (not charged)', paid: '✅ Paid', shipped: '📦 Shipped' };
+function addressOf(sh) {
+  if (!sh?.address) return '';
+  const a = sh.address;
+  return [sh.name, a.line1, a.line2, [a.city, a.state, a.postal_code].filter(Boolean).join(' '), a.country].filter(Boolean).map(UI.esc).join('<br>');
+}
 function renderOrders() {
-  $('#orderRows').innerHTML = S.orders.sort((a, b) => b.ts - a.ts).map((o) => `<tr><td>${new Date(o.ts).toLocaleString()}</td><td>${UI.esc(o.email)}</td>
-    <td>${o.items.map((i) => `${UI.esc(i.title)} <span class="muted">(${UI.esc(i.license)})</span>`).join('<br>')}</td><td>${UI.money(o.total)}</td>
-    <td><span class="chip">${UI.esc({ 'sent-to-stripe': 'Sent to Stripe — confirm in Stripe Payments', 'demo-paid': 'Demo (not charged)' }[o.status] || o.status)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No orders yet.</td></tr>';
+  $('#orderRows').innerHTML = S.orders.sort((a, b) => b.ts - a.ts).map((o) => `<tr><td>${new Date(o.ts).toLocaleString()}</td>
+    <td>${UI.esc(o.email)}${o.shipping ? `<div class="muted" style="font-size:12px;margin-top:4px">${addressOf(o.shipping)}</div>` : ''}</td>
+    <td>${o.kind === 'crate' ? '<span class="chip hot">💿 Vinyl</span><br>' : ''}${o.items.map((i) => `${UI.esc(i.title)} <span class="muted">(${UI.esc(i.license)})</span>`).join('<br>')}</td>
+    <td>${UI.money(o.total)}${o.shippingCost ? `<div class="muted" style="font-size:12px">incl. ${UI.money(o.shippingCost)} shipping</div>` : ''}</td>
+    <td><span class="chip">${UI.esc(ORDER_STATUS[o.status] || o.status)}</span>${o.tracking ? `<div class="muted" style="font-size:12px;margin-top:4px">Tracking: ${UI.esc(o.tracking)}</div>` : ''}
+      ${o.kind === 'crate' && o.status === 'paid' ? `<br><button class="btn sm" data-ship="${UI.esc(o.id)}" style="margin-top:6px">Mark shipped</button>` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="muted">No orders yet.</td></tr>';
+  $('#orderRows').querySelectorAll('[data-ship]').forEach((b) => b.onclick = async () => {
+    const o = S.orders.find((x) => x.id === b.dataset.ship);
+    const tracking = prompt('Tracking number (optional):', '') ?? null;
+    if (tracking === null) return;
+    Object.assign(o, { status: 'shipped', shippedAt: Date.now(), tracking: tracking.trim() });
+    await DB.put('orders', o); renderOrders();
+  });
 }
 
 /* ---------- Settings ---------- */
 function renderSettings() {
   const f = $('#setForm'), s = S.settings;
   f.producer.value = s.producer; f.tagline.value = s.tagline; f.newsletterEndpoint.value = s.newsletterEndpoint || '';
+  const ship = { usFirst: 6, usEach: 1, intlFirst: 30, intlEach: 5, ...(s.crateShipping || {}) };
+  ['usFirst', 'usEach', 'intlFirst', 'intlEach'].forEach((k) => (f[k].value = ship[k]));
   $('#licEdit').innerHTML = s.licenses.map((l) => `<div class="row" style="margin-bottom:8px">
     <b style="width:200px">${UI.esc(l.name)}</b><input class="input" type="number" step="0.01" data-price="${l.id}" value="${l.price}" style="width:110px">
     <input class="input grow" data-link="${l.id}" value="${UI.esc(s.stripeLinks[l.id] || '')}" placeholder="https://buy.stripe.com/…"></div>`).join('');
@@ -474,6 +515,7 @@ $('#setForm').onsubmit = async (e) => {
   s.producer = f.producer.value.trim() || s.producer; s.tagline = f.tagline.value.trim(); s.newsletterEndpoint = f.newsletterEndpoint.value.trim();
   document.querySelectorAll('[data-price]').forEach((i) => { s.licenses.find((l) => l.id === i.dataset.price).price = +i.value; });
   document.querySelectorAll('[data-link]').forEach((i) => { s.stripeLinks[i.dataset.link] = i.value.trim(); });
+  s.crateShipping = Object.fromEntries(['usFirst', 'usEach', 'intlFirst', 'intlEach'].map((k) => [k, Math.max(0, +f[k].value || 0)]));
   await DB.saveSettings(s); UI.toast('Settings saved');
 };
 $('#resetDemo').onclick = async () => {
@@ -487,5 +529,6 @@ $('#resetDemo').onclick = async () => {
 
 gate();
 </script>
+<script src="js/crate-admin.js"></script>
 </body>
 </html>

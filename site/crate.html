@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Crate — Vinyl Records</title>
+  <meta name="description" content="Hand-picked vinyl records for collectors and producers, graded and shipped by 8wave. Look for the Chopped by 8wave notes on sample-ready records.">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .crate-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 18px; }
+    .rec { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: .15s; position: relative; }
+    .rec:hover { border-color: var(--muted); transform: translateY(-2px); }
+    .rec .img { aspect-ratio: 1; background: var(--panel-2) center / cover no-repeat; position: relative; }
+    .rec .body { padding: 12px 14px 14px; }
+    .rec .artist { color: var(--muted); font-size: 13px; }
+    .rec .price { font-weight: 800; font-size: 18px; margin-top: 6px; }
+    .badge-chop { position: absolute; top: 10px; left: 10px; background: var(--accent-2); color: #fff; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; letter-spacing: .3px; }
+    .sold-over { position: absolute; inset: 0; background: rgba(0, 0, 0, .55); display: grid; place-items: center; font-weight: 800; font-size: 22px; letter-spacing: 3px; }
+    .gallery-main { aspect-ratio: 1; border-radius: 12px; background: var(--panel-2) center / contain no-repeat; }
+    .spec td { padding: 6px 8px; } .spec td:first-child { color: var(--muted); width: 110px; }
+    .chops { background: rgba(124, 92, 255, .1); border: 1px solid rgba(124, 92, 255, .35); border-radius: 12px; padding: 14px; margin-top: 14px; }
+    .tabs-inline { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tabs-inline button { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 6px 14px; cursor: pointer; color: var(--muted); }
+    .tabs-inline button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+    .notice { padding: 14px 18px; border-radius: 12px; margin-bottom: 18px; }
+    .notice.ok { background: rgba(47, 209, 139, .12); border: 1px solid var(--ok); }
+    .notice.warn { background: rgba(255, 181, 71, .1); border: 1px solid var(--warn); }
+    .region { display: flex; gap: 8px; margin: 10px 0; }
+    .region label { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 10px; cursor: pointer; font-size: 14px; }
+    .region input { margin-right: 6px; }
+  </style>
+</head>
+<body style="padding-bottom:40px">
+<nav class="top">
+  <div class="wrap">
+    <a class="logo" href="index.html" id="brand">BEAT<span>STORE</span></a>
+    <div class="links grow"><a href="index.html#beats">Beats</a><a href="crate.html" style="color:var(--text)">The Crate</a><a href="index.html#hookwriter">Hook Writer</a></div>
+    <button class="btn ghost cart-btn" id="cartBtn">📦 Crate cart <span class="badge hidden" id="cartCount">0</span></button>
+  </div>
+</nav>
+
+<header class="hero" style="padding-bottom:20px">
+  <div class="wrap">
+    <h1>The Crate</h1>
+    <p class="lead">Records from the 8wave collection — graded, cleaned and shipped with care. Look for <b style="color:var(--accent-2)">Chopped by 8wave</b>: records that come with our producer notes on exactly where to chop.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="notice"></div>
+  <div class="row filters" style="margin:0 0 12px">
+    <input class="input grow" id="q" placeholder="Search artist, title, label…">
+    <select id="fGenre"><option value="">All genres</option></select>
+    <select id="fFormat"><option value="">All formats</option></select>
+    <select id="fSort"><option value="new">Newest</option><option value="low">Price ↑</option><option value="high">Price ↓</option></select>
+  </div>
+  <div class="tabs-inline" style="margin-bottom:18px">
+    <button data-view="all" class="on">All records</button>
+    <button data-view="chopped">✂ Chopped by 8wave</button>
+    <button data-view="sold">Recently sold</button>
+  </div>
+  <div class="crate-grid" id="grid"></div>
+</main>
+
+<footer><div class="wrap row"><span class="grow">Records are graded on the Goldmine scale (M, NM, VG+, VG, G+, G, F, P). Chop notes are producer notes only — samples used in a commercial release may need clearance from the rights holders.</span><a href="admin.html" class="muted">Producer login</a></div></footer>
+
+<div id="layer"></div>
+
+<script src="js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/db.js"></script>
+<script src="js/db-cloud.js"></script>
+<script src="js/ui.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const SHIP_DEFAULTS = { usFirst: 6, usEach: 1, intlFirst: 30, intlEach: 5 };
+const state = { records: [], settings: null, view: 'all', cart: [] };
+try { state.cart = JSON.parse(localStorage.getItem('crateCart') || '[]'); } catch {}
+const saveCart = () => { try { localStorage.setItem('crateCart', JSON.stringify(state.cart)); } catch {} renderCartBadge(); };
+
+async function load() {
+  const params = new URLSearchParams(location.search);
+  if (params.has('paid')) {
+    state.cart = []; saveCart();
+    $('#notice').innerHTML = '<div class="notice ok"><b>✅ Order received — thank you!</b> Stripe has emailed your receipt. Your records will be packed and shipped within 2 business days.</div>';
+  } else if (params.has('canceled')) {
+    $('#notice').innerHTML = '<div class="notice warn">Checkout canceled — your records are still in your crate cart. Held records go back on sale after 30 minutes.</div>';
+  }
+  if (!DB.cloud) { $('#grid').innerHTML = '<p class="muted">The Crate is only available on the live site.</p>'; return; }
+  state.settings = await DB.settings();
+  $('#brand').innerHTML = UI.esc(state.settings.producer).replace(/^(\S+)/, '$1<span>') + '</span>';
+  try { state.records = await DB.all('records'); }
+  catch { $('#grid').innerHTML = '<p class="muted">The Crate is opening soon — check back shortly.</p>'; return; }
+  // Drop cart items that sold or vanished since they were added
+  const avail = new Set(state.records.filter((r) => r.status === 'available').map((r) => r.id));
+  state.cart = state.cart.filter((id) => avail.has(id)); saveCart();
+  const opts = (key) => [...new Set(state.records.map((r) => r[key]).filter(Boolean))].sort();
+  opts('genre').forEach((g) => $('#fGenre').add(new Option(g, g)));
+  opts('format').forEach((f) => $('#fFormat').add(new Option(f, f)));
+  render();
+  const open = params.get('record');
+  if (open && state.records.some((r) => r.id === open)) openRecord(open);
+}
+
+function visible() {
+  const q = $('#q').value.toLowerCase(), g = $('#fGenre').value, f = $('#fFormat').value, sort = $('#fSort').value;
+  let list = state.records.filter((r) =>
+    (state.view === 'sold' ? r.status === 'sold' : r.status !== 'sold') &&
+    (state.view !== 'chopped' || r.chopped) &&
+    (!q || [r.artist, r.title, r.label, r.genre, r.catno].join(' ').toLowerCase().includes(q)) &&
+    (!g || r.genre === g) && (!f || r.format === f));
+  const by = { new: (a, b) => (b.listed || 0) - (a.listed || 0), low: (a, b) => a.price - b.price, high: (a, b) => b.price - a.price };
+  return list.sort(state.view === 'sold' ? (a, b) => (b.soldAt || 0) - (a.soldAt || 0) : by[sort]);
+}
+
+function render() {
+  const list = visible();
+  $('#grid').innerHTML = list.map((r) => `
+    <div class="rec" data-rec="${UI.esc(r.id)}">
+      <div class="img" style="background-image:url('${UI.esc(r.photos?.[0] || '')}')">
+        ${r.chopped ? '<span class="badge-chop">✂ CHOPPED BY 8WAVE</span>' : ''}
+        ${r.status === 'sold' ? '<div class="sold-over">SOLD</div>' : r.status === 'pending' ? '<div class="sold-over" style="font-size:15px">ON HOLD</div>' : ''}
+      </div>
+      <div class="body">
+        <b>${UI.esc(r.title)}</b><div class="artist">${UI.esc(r.artist)}</div>
+        <div style="margin-top:6px">${r.format ? `<span class="chip">${UI.esc(r.format)}</span>` : ''}${r.media ? `<span class="chip">Media ${UI.esc(r.media)}</span>` : ''}</div>
+        <div class="price">${UI.money(r.price)}</div>
+      </div>
+    </div>`).join('') || `<p class="muted">${state.view === 'sold' ? 'Nothing sold yet.' : 'No records match — check back soon, the crate gets restocked often.'}</p>`;
+}
+['#q', '#fGenre', '#fFormat', '#fSort'].forEach((s) => $(s).addEventListener('input', render));
+document.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => {
+  state.view = b.dataset.view;
+  document.querySelectorAll('[data-view]').forEach((x) => x.classList.toggle('on', x === b));
+  render();
+});
+$('#grid').addEventListener('click', (e) => { const c = e.target.closest('[data-rec]'); if (c) openRecord(c.dataset.rec); });
+
+const closeLayer = () => { $('#layer').innerHTML = ''; history.replaceState(null, '', location.pathname); };
+
+function openRecord(id) {
+  const r = state.records.find((x) => x.id === id);
+  history.replaceState(null, '', `?record=${encodeURIComponent(id)}`); // shareable link to this exact record
+  const photos = r.photos?.length ? r.photos : [''];
+  const inCart = state.cart.includes(r.id);
+  const spec = [['Artist', r.artist], ['Title', r.title], ['Label', r.label], ['Catalog #', r.catno], ['Year', r.year], ['Format', r.format],
+    ['Genre', r.genre], ['Media', r.media], ['Sleeve', r.sleeve]].filter(([, v]) => v);
+  $('#layer').innerHTML = `<div class="modal-wrap" id="mw"><div class="modal">
+    <div class="row" style="margin-bottom:12px"><h2 class="grow" style="margin:0">${UI.esc(r.artist)} – ${UI.esc(r.title)}</h2><button class="btn ghost sm" id="mx">✕</button></div>
+    <div class="grid2">
+      <div><div class="gallery-main" id="gmain" style="background-image:url('${UI.esc(photos[0])}')"></div>
+        ${photos.length > 1 ? `<div class="thumbs">${photos.map((p, i) => `<img src="${UI.esc(p)}" data-i="${i}" class="${i ? '' : 'on'}" alt="Photo ${i + 1}">`).join('')}</div>` : ''}</div>
+      <div>
+        <div style="font-size:28px;font-weight:800">${UI.money(r.price)}</div>
+        <p class="muted" style="margin:4px 0 12px;font-size:13px">+ shipping (US or international, chosen at checkout)</p>
+        ${r.status === 'available'
+          ? `<button class="btn primary" id="addRec" style="width:100%">${inCart ? '✓ In your crate cart — view cart' : 'Add to crate cart'}</button>`
+          : `<button class="btn" disabled style="width:100%">${r.status === 'sold' ? 'Sold' : 'On hold in someone\'s checkout'}</button>`}
+        <table class="spec" style="margin-top:14px">${spec.map(([k, v]) => `<tr><td>${k}</td><td>${UI.esc(v)}</td></tr>`).join('')}</table>
+      </div>
+    </div>
+    ${r.description ? `<h4 style="margin:18px 0 6px">Notes</h4><p style="white-space:pre-wrap;margin:0">${UI.esc(r.description)}</p>` : ''}
+    ${r.chopped ? `<div class="chops"><b>✂ Chopped by 8wave — where to chop</b>
+      ${(r.chops || []).length ? `<table style="margin-top:8px"><thead><tr><th>Where</th><th>BPM</th><th>Key</th><th>What's there</th></tr></thead><tbody>
+        ${r.chops.map((c) => `<tr><td>${UI.esc(c.at)}</td><td>${UI.esc(c.bpm)}</td><td>${UI.esc(c.key)}</td><td>${UI.esc(c.note)}</td></tr>`).join('')}</tbody></table>` : ''}
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Producer notes from 8wave to help you find the best moments on your copy. Samples used in a commercial release may need clearance.</p></div>` : ''}
+  </div></div>`;
+  $('#mx').onclick = closeLayer;
+  $('#mw').onclick = (e) => e.target.id === 'mw' && closeLayer();
+  $('#layer').querySelectorAll('.thumbs img').forEach((im) => im.onclick = () => {
+    $('#gmain').style.backgroundImage = `url('${photos[im.dataset.i]}')`;
+    $('#layer').querySelectorAll('.thumbs img').forEach((x) => x.classList.toggle('on', x === im));
+  });
+  const add = $('#addRec');
+  if (add) add.onclick = () => {
+    if (!state.cart.includes(r.id)) { state.cart.push(r.id); saveCart(); UI.toast('Added to your crate cart'); }
+    openCart();
+  };
+}
+
+/* ---------- Cart + checkout ---------- */
+function renderCartBadge() { $('#cartCount').textContent = state.cart.length; $('#cartCount').classList.toggle('hidden', !state.cart.length); }
+const shipCost = (region, n) => {
+  const s = { ...SHIP_DEFAULTS, ...(state.settings?.crateShipping || {}) };
+  return n ? (region === 'us' ? s.usFirst + s.usEach * (n - 1) : s.intlFirst + s.intlEach * (n - 1)) : 0;
+};
+
+function openCart(region = 'us') {
+  const items = state.cart.map((id) => state.records.find((r) => r.id === id)).filter(Boolean);
+  const sub = items.reduce((a, r) => a + Number(r.price), 0), ship = shipCost(region, items.length);
+  $('#layer').innerHTML = `<div class="overlay" id="ov"><div class="drawer">
+    <div class="row"><h2 class="grow" style="margin:0">Crate cart</h2><button class="btn ghost sm" id="cx">✕</button></div>
+    ${items.map((r) => `<div class="cart-item"><div class="row" style="gap:10px;flex-wrap:nowrap">
+        <img src="${UI.esc(r.photos?.[0] || '')}" alt="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;background:var(--panel-2)">
+        <div><b>${UI.esc(r.title)}</b><div class="muted" style="font-size:13px">${UI.esc(r.artist)} · ${UI.esc(r.format || 'Vinyl')}</div></div></div>
+      <div style="text-align:right"><b>${UI.money(r.price)}</b><br><a href="#" class="muted" data-rm="${UI.esc(r.id)}" style="font-size:12px">remove</a></div></div>`).join('') || '<p class="muted">Your crate cart is empty.</p>'}
+    ${items.length ? `
+      <div class="region">
+        <label><input type="radio" name="region" value="us" ${region === 'us' ? 'checked' : ''}>🇺🇸 United States</label>
+        <label><input type="radio" name="region" value="intl" ${region === 'intl' ? 'checked' : ''}>🌍 International</label>
+      </div>
+      <div class="row"><span class="grow muted">Records</span><span>${UI.money(sub)}</span></div>
+      <div class="row"><span class="grow muted">Shipping</span><span>${UI.money(ship)}</span></div>
+      <div class="row" style="margin:10px 0 16px"><b class="grow">Total</b><b style="font-size:22px">${UI.money(sub + ship)}</b></div>
+      <form id="co"><input class="input" type="email" name="email" placeholder="Email for your receipt" required style="width:100%;margin-bottom:10px">
+        <button class="btn primary" style="width:100%" id="coBtn">Checkout ${UI.money(sub + ship)}</button></form>
+      <p class="muted" style="font-size:12px">Secure payment by Stripe. You'll enter your shipping address there. Records are held for you for 30 minutes during checkout.</p>` : ''}
+  </div></div>`;
+  $('#cx').onclick = closeLayer;
+  $('#ov').onclick = (e) => e.target.id === 'ov' && closeLayer();
+  $('#layer').querySelectorAll('[data-rm]').forEach((a) => a.onclick = (e) => {
+    e.preventDefault(); state.cart = state.cart.filter((x) => x !== a.dataset.rm); saveCart(); openCart(region);
+  });
+  $('#layer').querySelectorAll('[name=region]').forEach((i) => i.onchange = () => openCart(i.value));
+  const form = $('#co');
+  if (form) form.onsubmit = async (e) => {
+    e.preventDefault();
+    $('#coBtn').disabled = true; $('#coBtn').textContent = 'Opening secure checkout…';
+    try {
+      location.href = await DB.crateCheckout(state.cart, region, form.email.value.trim());
+    } catch (err) {
+      if (err.unavailable?.length) {
+        state.cart = state.cart.filter((id) => !err.unavailable.includes(id)); saveCart();
+        state.records = await DB.all('records'); render();
+      }
+      UI.toast(err.message);
+      openCart(region);
+    }
+  };
+}
+$('#cartBtn').onclick = () => openCart();
+renderCartBadge();
+load();
+</script>
+</body>
+</html>

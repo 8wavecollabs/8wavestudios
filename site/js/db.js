@@ -138,5 +138,9 @@ const DB = (() => {
     cloud: false, DEFAULT_SETTINGS, open, all, get, put, insert: put, del, settings, saveSettings, BANDS, bandFor, uid, logEvent, seedIfEmpty,
     trackStats, subscribe, saveAudio,
     session: async () => ({ local: true }), signIn: async () => {}, signOut: async () => {},
+    // The vinyl crate needs the online database (photos, holds, Stripe), so offline mode can't sell records
+    uploadImage: async () => { throw new Error('The crate needs online mode (js/config.js)'); },
+    removeImages: async () => {},
+    crateCheckout: async () => { throw new Error('Checkout for records only works on the live site.'); },
   };
 })();

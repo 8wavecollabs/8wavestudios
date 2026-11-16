@@ -131,6 +131,9 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: upp
 .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 20px; overflow-x: auto; }
 .tabs button { background: none; border: 0; padding: 12px 14px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
 .tabs button.on { color: var(--text); border-color: var(--accent); }
+.thumbs { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.thumbs img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 2px solid transparent; }
+.thumbs img.on { border-color: var(--accent); }
 .spark { display: flex; align-items: flex-end; gap: 2px; height: 26px; }
 .spark i { width: 5px; background: var(--accent-2); border-radius: 2px; opacity: .8; }
 
